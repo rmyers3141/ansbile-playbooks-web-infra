@@ -140,7 +140,7 @@ If desired, you can also run the playbooks selectively to create stand-alone web
 - If you just wanted an Apache web server that also serves Python content (e.g. Django, Flask), run `playbook-apache.yml` followed by `playbook-python-mod_wsgi.yml`.
 
 
-### TO-DO:
+## TO-DO:
 This is a exploratory development project that can benefit from some improvements and enhancements, such as:
 
 - Scaling the playbooks to create a large web serving farm with multiple front ends more diverse backends.
