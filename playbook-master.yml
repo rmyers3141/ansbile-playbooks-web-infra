@@ -1,0 +1,15 @@
+---
+
+- name: Install & Configure & Apache (httpd)
+  ansible.builtin.import_playbook: playbook-apache.yml
+
+- name: Configure Apache for PHP-FPM:
+  ansible.builtin.import_playbook: playbook-php-fpm-8.2.yml
+
+- name: Configure Apache for Python (mod_wsgi):
+  ansible.builtin.import_playbook: playbook-python-mod_wsgi.yml
+
+- name: Install & Configure Nginx as a front-end Reverse-Proxy:
+  ansible.builtin.import_playbook: playbook-nginx-rp.yml
+
+...

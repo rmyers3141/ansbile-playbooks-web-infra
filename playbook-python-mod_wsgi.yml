@@ -1,0 +1,68 @@
+---
+- name: Install mod_wsgi support for Apache & Python test app.
+  hosts:
+    - hostC
+  become: true
+
+  vars:
+    site_domain: "{{ ansible_fqdn }}"
+    conf_path: /etc/httpd
+    content_path: /srv/www
+    content_path_site_scripts: "{{ content_path }}/{{ site_domain }}/cgi-bin"
+    # python_app_uri: python-app
+    test_app_path: "{{ content_path_site_scripts }}/{{ python_app_uri }}/test.wsgi"
+
+  tasks:
+    - name: Install mod_wsgi
+      ansible.builtin.dnf:
+        name:
+          - python3-mod_wsgi
+        state: latest
+
+    - name: Create app dir for Python code
+      ansible.builtin.file:
+        path: "{{ content_path_site_scripts }}/{{ python_app_uri }}"
+        state: directory
+        mode: '0755'
+
+    - name: Insert WSGI test app directives into site .conf file
+      ansible.builtin.blockinfile:
+        path: "{{ conf_path }}/conf.d/{{ site_domain }}.conf"
+        marker: "    # {mark} ANSIBLE-MANAGED mod_wsgi SETTINGS"
+        marker_begin: "BEGIN:"
+        marker_end: "END:"
+        insertbefore: "# SETTINGS ADAPTED FROM VH IN ssl.conf"
+        block: |2
+              WSGIScriptAlias /{{ python_app_uri }} {{ test_app_path }}
+        # validate: /usr/sbin/apachectl configtest
+
+    - name: Create Python test script
+      ansible.builtin.copy:
+        dest: "{{ test_app_path }}"
+        mode: '0755'
+        content: |2
+          def application(environ, start_response):
+              status = '200 OK'
+              output = b'HELLO FROM ANSIBLE-DEPLOYED TEST WSGI APP!'
+              response_headers = [('Content-type', 'text/plain'),
+                                  ('Content-Length', str(len(output)))]
+              start_response(status, response_headers)
+              return [output]
+
+
+    - name: Restart Apache httpd
+      ansible.builtin.systemd_service:
+        name: httpd
+        state: restarted
+
+    - name: Verify Python test script works with expected response
+      ansible.builtin.uri:
+        url: https://{{ site_domain }}/{{ python_app_uri }}
+        return_content: true
+        validate_certs: false
+      register: resp
+      failed_when:
+        - "'HELLO FROM ANSIBLE-DEPLOYED TEST WSGI APP' not in resp.content"
+
+    # TO-DO: ADD TASK TO REMOVE TEST FILE IF SUCCESSFUL
+...

@@ -1,0 +1,165 @@
+---
+- name: Install & Configure Nginx as a Reverse-Proxy
+  hosts:
+    - web_reverse_proxy
+  become: true
+
+  vars:
+    site_domain: "{{ ansible_fqdn }}"
+    http_port: 80
+    https_port: 443
+    config_files: files
+    config_files_conf: "{{ config_files }}/conf_nginx"
+    config_files_ssl: "{{ config_files }}/ssl"
+    conf_path: /etc/nginx
+    ssl_path: /etc/pki/nginx
+    ssl_path_site: "{{ ssl_path }}/{{ site_domain }}"
+    content_path: /srv/www
+    content_path_site: "{{ content_path }}/{{ site_domain }}"
+    git_repo: https://{{ git_user }}:{{ git_token }}@gitlab.com/{{ git_user }}/{{ git_project }}.git
+      
+    # ASSIGN BELOW VARS TO RELEVANT BACKEND SERVERS:
+    app1_rp_domain: "{{ hostvars['hostB']['ansible_host'] }}"
+    app2_rp_domain: "{{ hostvars['hostC']['ansible_host'] }}"
+    app1_rp_uri: "cgi-bin/{{ hostvars['hostB']['php_app_uri'] }}"
+    app2_rp_uri: "{{ hostvars['hostC']['python_app_uri'] }}/"
+
+  vars_files:
+    - secrets.yml
+
+  roles:
+    - name: nginx
+
+  tasks:
+    - name: Create document root
+      ansible.builtin.file:
+        path: "{{ content_path_site }}/html"
+        state: directory
+        mode: '0755'
+
+    - name: Create cgi-bin directory
+      ansible.builtin.file:
+        path: "{{ content_path_site }}/cgi-bin"
+        state: directory
+        mode: '0755'
+
+    - name: Recursively change ownership of www directory
+      ansible.builtin.file:
+        path: "{{ content_path }}"
+        state: directory
+        recurse: true
+        owner: nginx
+        group: nginx
+
+    - name: Tell SELinux to treat the new site html path as web content
+      ansible.builtin.shell: |
+        semanage fcontext -a -t httpd_sys_content_t "{{ content_path_site }}/html(/.*)?"
+        restorecon -Rv {{ content_path_site }}/html
+
+    - name: Tell SELinux to treat the new site cgi-bin path for CGI scripts
+      ansible.builtin.shell: |
+        semanage fcontext -a -t httpd_sys_script_exec_t "{{ content_path_site }}/cgi-bin(/.*)?"
+        restorecon -Rv {{ content_path_site }}/cgi-bin
+
+    - name: Create site-specific dir for SSL files
+      ansible.builtin.file:
+        path: "{{ ssl_path_site }}"
+        state: directory
+        mode: '0700'
+
+    - name: Copy site-specific SSL files to dir
+      ansible.builtin.copy:
+        src: "{{ config_files_ssl }}/{{ item }}"
+        dest: "{{ ssl_path_site }}"
+        mode: '0700'
+      loop:
+        - "{{ site_ssl_crt }}"
+        - "{{ site_ssl_key }}"
+
+    - name: Create site-specific .conf file from template
+      ansible.builtin.template:
+        src: "{{ config_files_conf }}/nginx-server-rp.j2"
+        dest: "{{ conf_path }}/conf.d/{{ site_domain }}.conf"
+        owner: nginx
+        group: nginx
+        mode: '0644'
+        backup: false
+
+    - name: Tell SELinux to allow Nginx outbound (RP) connections
+      ansible.builtin.shell: |
+        setsebool -P httpd_can_network_connect 1
+      notify:
+        - Restart nginx system service
+
+    # WEB CONTENT UPDATE TASKS - TAGGED INTO A SINGLE BLOCK:
+    - name: Update web server with some default content
+      tags: content_update
+      block:
+        - name: Ensure web content directory is emptied first.
+          ansible.builtin.shell: |
+            rm -rf {{ content_path_site }}/html/*
+            rm -rf {{ content_path_site }}/cgi-bin/*
+
+        - name: Create temp dir for downloaded repo
+          ansible.builtin.tempfile:
+            state: directory
+          register: temp_dir_content
+
+        - name: Report temp dir location
+          ansible.builtin.debug:
+            msg: "Temp dir created at: {{ temp_dir_content.path }}."
+
+        # BELOW TASK MAY NOT BE NECESSARY?
+        - name: First mark the temp_dir as safe for non-owner to clone to
+          ansible.builtin.command:
+            cmd: "git config --global --add safe.directory {{ temp_dir_content.path }}"
+
+        - name: Get web content and code from Git repo using access token
+          ansible.builtin.git:
+            repo: "{{ git_repo }}"
+            dest: "{{ temp_dir_content.path }}"
+
+        - name: Copy static content
+          ansible.builtin.copy:
+            src: "{{ temp_dir_content.path }}/html/"
+            dest: "{{ content_path_site }}/html"
+            remote_src: true
+            owner: nginx
+            group: nginx
+            mode: '0755'
+
+        - name: Copy dynamic content
+          ansible.builtin.copy:
+            src: "{{ temp_dir_content.path }}/cgi-bin/"
+            dest: "{{ content_path_site }}/cgi-bin"
+            remote_src: true
+            owner: nginx
+            group: nginx
+            mode: '0755'
+
+        - name: Remove temp directory
+          ansible.builtin.file:
+            path: "{{ temp_dir_content.path }}"
+            state: absent
+
+          # WEB CONTENT UPDATE - END OF BLOCK.
+
+    - name: Flush handlers (to restart nginx)
+      meta: flush_handlers
+
+    - name: Open TCP ports 80 and 443
+      ansible.posix.firewalld:
+        port: "{{ item }}/tcp"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop:
+        - '{{ http_port }}'
+        - '{{ https_port }}'
+
+  handlers:
+    - name: Restart nginx system service
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: restarted
+...

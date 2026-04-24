@@ -1,0 +1,12 @@
+---
+# vars file for "apache" role
+
+apache_mods:
+  - httpd
+  - httpd-tools
+  - mod_ssl
+  - mod_http2
+
+apache_default_page: http://localhost/.noindex.html
+...
+

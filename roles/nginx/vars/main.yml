@@ -1,0 +1,7 @@
+---
+# vars file for nginx
+#
+nginx_version_install: 1.24
+nginx_default_page: http://localhost/
+
+...

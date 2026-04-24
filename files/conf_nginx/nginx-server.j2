@@ -1,0 +1,45 @@
+# This file is {{ ansible_managed }}, and was rendered on {{ template_run_date }}.
+
+    server {
+        listen       {{ http_port }};
+        listen       {{ https_port }} ssl http2;
+        server_name  {{ site_domain }};
+
+        # SSL SETTINGS:
+        ssl_certificate {{ ssl_path }}/{{ site_domain }}/{{ site_ssl_crt }};
+        ssl_certificate_key {{ ssl_path }}/{{ site_domain }}/{{ site_ssl_key }};
+	# ssl_dhparam {{ ssl_path }}/{{ site_domain }}/dhparam.pem;
+        
+        # LATER - Place generic SSL settings into a separate ssl.conf file: 
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+
+        root         {{ content_path_site }}/html;
+        index default.html;
+
+        # REDIRECT HTTP TO HTTPS (Works, but not for Chrome - need further investigation).
+        if ($scheme != "https") {
+            rewrite ^ https://$host$request_uri permanent;
+        }
+
+        # TEST A DOWNLOAD DIRECTORY.
+        location /downloads/ {
+            # Remove all MIME types from this location:
+            types {}
+            # Treat all files here to be downloaded in browser:
+            default_type application/octet-stream;
+        }
+
+        # TEST BASIC AUTHENTICATION.
+        location /secure/ {
+            auth_basic           "closed site";
+            auth_basic_user_file /etc/nginx/.htpasswd;
+        }
+        
+        # MONITORING INFO.
+        location = /nginx_status {
+            stub_status on;
+        }
+
+    }

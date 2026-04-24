@@ -1,0 +1,48 @@
+---
+- name: First upgrade all system packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+
+- name: Install Apache, desired modules, etc
+  ansible.builtin.dnf:
+    name: "{{ apache_mods }}"
+    state: latest
+    update_cache: true
+
+- name: Check version of Apache installed
+  ansible.builtin.shell:
+    cmd: "httpd -v 2>&1 | head -1 |cut -c 24-29"
+  register: apache_version_installed
+
+- name: Print version of Apache installed
+  ansible.builtin.debug:
+    msg: "The Apache version is {{apache_version_installed.stdout}}."
+
+- name: Enable Apache service in started state
+  ansible.builtin.systemd_service:
+    name: httpd
+    enabled: true
+    state: started
+
+- name: Verify Apache service enabled status
+  ansible.builtin.shell:
+    cmd: "systemctl is-enabled httpd"
+  register: service_enabled_status
+
+- name: Report Apache service enabled status
+  ansible.builtin.debug:
+    msg: "The Apache service is: {{service_enabled_status.stdout}}."
+
+- name: Populate service facts
+  ansible.builtin.service_facts:
+
+- name: Show status of the Apache service
+  ansible.builtin.debug:
+    var: ansible_facts.services['httpd.service'].state
+
+- name: Check Apache default page works and returns a status 200
+  ansible.builtin.uri:
+    url: "{{ apache_default_page }}"
+
+...

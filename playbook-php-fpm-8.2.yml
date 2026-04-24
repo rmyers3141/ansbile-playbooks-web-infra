@@ -1,0 +1,81 @@
+---
+- name: Install PHP & PHP-FPM 8.2
+  hosts:
+    - hostB
+  become: true
+
+  vars:
+    epl_url: https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+    remi_url: https://rpms.remirepo.net/enterprise/remi-release-9.rpm
+    site_domain: "{{ ansible_fqdn }}"
+    content_path: /srv/www
+    content_path_site_scripts: "{{ content_path }}/{{ site_domain }}/cgi-bin"
+    # php_app_uri: php-app
+
+  tasks:
+    - name: Install EPEL and Remi release packages that support PHP 8.2
+      ansible.builtin.dnf:
+        name:
+          - "{{ epl_url }}"
+          - "{{ remi_url }}"
+        state: present
+        disable_gpg_check: true
+
+    - name: Reset PHP module stream
+      ansible.builtin.dnf:
+        name: php
+        state: absent
+        # Note: This clears the module state so a new stream can be enabled
+
+    - name: Enable PHP 8.2 Remi stream
+      ansible.builtin.dnf:
+        name: "@php:remi-8.2"
+        state: present
+
+    - name: Install PHP-FPM and PHP
+      ansible.builtin.dnf:
+        name:
+          - php
+          - php-fpm
+        state: latest
+
+    - name: Enable PHP-FPM service in started state
+      ansible.builtin.systemd_service:
+        name: php-fpm
+        enabled: true
+        state: started
+
+    - name: Populate service facts
+      ansible.builtin.service_facts:
+
+    - name: Show status of the PHP-FPM service
+      ansible.builtin.debug:
+        var: ansible_facts.services['php-fpm.service'].state
+
+    - name: Create dir for PHP scripts
+      ansible.builtin.file:
+        path: "{{ content_path_site_scripts }}/{{ php_app_uri }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create test PHP file
+      ansible.builtin.shell:
+        cmd: echo '<?php phpinfo(); ?>' > {{ content_path_site_scripts }}/{{ php_app_uri }}/index.php
+
+
+    - name: Restart Apache httpd
+      ansible.builtin.systemd_service:
+        name: httpd
+        state: restarted
+
+    - name: Verify test PHP file works with expected response
+      ansible.builtin.uri:
+        url: https://{{ site_domain }}/cgi-bin/{{ php_app_uri }}/index.php
+        return_content: true
+        validate_certs: false
+      register: resp
+      failed_when:
+        - "'PHP Version 8.2' not in resp.content"
+
+    # TO-DO: ADD TASK TO REMOVE TEST FILE IF SUCCESSFUL
+...

@@ -1,0 +1,68 @@
+# This file is {{ ansible_managed }}, and was rendered on {{ template_run_date }}.
+#
+# HTTP redirect to HTTPS
+<VirtualHost *:80>
+    ServerName {{ site_domain }}
+    Redirect permanent / https://{{ site_domain }}
+</VirtualHost>
+
+# HTTPS
+<VirtualHost *:443>
+    ServerName {{ site_domain }}
+    DocumentRoot {{ content_path_site }}/html
+    SSLEngine on
+    SSLCertificateFile {{ ssl_path_site }}/{{ site_ssl_crt }}
+    SSLCertificateKeyFile {{ ssl_path_site }}/{{ site_ssl_key }}
+
+    # CONTENT ACCESS SETTINGS:
+    # Relax access to content within {{ content_path_site}}:
+    #
+    <Directory "{{ content_path_site}}">
+        AllowOverride None
+        # Allow open access:
+        Require all granted
+    </Directory>
+    #
+    # Further relax access to the default document root:
+    #
+    <Directory "{{ content_path_site}}/html">
+        Options Indexes FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+    #
+    # For this VH use a different directory index file to the default:  
+    #
+    <IfModule dir_module>
+        DirectoryIndex default.html index.php
+    </IfModule>
+    #
+    <IfModule alias_module>
+        ScriptAlias /cgi-bin/ "{{ content_path_site}}/cgi-bin/"
+    </IfModule>
+    #
+    <Directory "{{ content_path_site}}/cgi-bin">
+        AllowOverride None
+       Options None
+       Require all granted
+    </Directory>
+
+    # SETTINGS ADAPTED FROM VH IN ssl.conf:
+    ErrorLog logs/{{ site_domain }}_ssl_error_log
+    TransferLog logs/{{ site_domain }}_ssl_access_log
+    LogLevel warn
+    SSLHonorCipherOrder on
+    SSLCipherSuite PROFILE=SYSTEM
+    SSLProxyCipherSuite PROFILE=SYSTEM
+    <FilesMatch "\.(cgi|shtml|phtml|php)$">
+        SSLOptions +StdEnvVars
+    </FilesMatch>
+    <Directory "/var/www/cgi-bin">
+        SSLOptions +StdEnvVars
+    </Directory>
+    BrowserMatch "MSIE [2-5]" \
+         nokeepalive ssl-unclean-shutdown \
+         downgrade-1.0 force-response-1.0
+    CustomLog logs/ssl_request_log \
+          "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+</VirtualHost>

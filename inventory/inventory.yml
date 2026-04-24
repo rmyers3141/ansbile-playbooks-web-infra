@@ -1,0 +1,44 @@
+allhosts:
+  children:
+    web_frontend:
+    web_backend:
+  vars:
+    remote_user: ansible
+
+web_frontend:
+  children:
+    web_reverse_proxy:
+  vars:
+    # git_repo: <<NOT_USED>> 
+
+web_backend:
+  children:
+    web_php:
+    web_python:
+  vars:
+    git_repo: <<REPLACE_WITH_YOUR_GIT_REPO_URL>>
+
+
+web_reverse_proxy:
+  hosts:
+    <<hostA>>:
+      ansible_host: <<hostA_FQDN>>
+      site_ssl_crt: <<hostA.crt>>
+      site_ssl_key: <<hostA.key>>
+
+web_php:
+  hosts:
+    <<hostB>>:
+      ansible_host: <<hostB_FQDN>>
+      site_ssl_crt: <<hostB.crt>>
+      site_ssl_key: <<hostB.key>>
+      php_app_uri: php-app
+
+web_python:
+  hosts:
+    <<hostC>>:
+      ansible_host: <<hostC_FQDN>>
+      site_ssl_crt: <<hostC.crt>>
+      site_ssl_key: <<hostC.key>>
+      python_app_uri: python-app
+

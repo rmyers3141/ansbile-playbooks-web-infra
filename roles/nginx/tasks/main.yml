@@ -1,0 +1,62 @@
+---
+# tasks file for nginx
+#
+- name: First upgrade all system packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+
+- name: Reset the nginx module to clear existing streams
+  ansible.builtin.command:
+    cmd: dnf module reset nginx -y
+    # This task is not idempotent by default; so use changed_when to track it
+  changed_when: true
+
+- name: Enable the required app stream for nginx version
+  ansible.builtin.command:
+    cmd: dnf module enable nginx:{{ nginx_version_install }} -y
+
+- name: Install latest release of nginx from the app stream
+  ansible.builtin.dnf:
+    name:
+      - nginx
+    state: latest
+
+- name: Check version of nginx installed
+  ansible.builtin.shell:
+    cmd: "nginx -v 2>&1 | cut -c 22-25"
+  register: nginx_version_installed
+
+- name: Print version of nginx installed
+  ansible.builtin.debug:
+    msg: "The Nginx version is {{nginx_version_installed.stdout}}."
+
+# AT THIS STAGE EXIT PLAYBOOK IF VERSION CHECK IS INCORRECT?
+
+- name: Enable nginx service in started state
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Verify nginx service enabled status
+  ansible.builtin.shell:
+    cmd: "systemctl is-enabled nginx"
+  register: service_enabled_status
+
+- name: Report nginx service enabled status
+  ansible.builtin.debug:
+    msg: "The Nginx service is: {{service_enabled_status.stdout}}."
+
+- name: Populate service facts
+  ansible.builtin.service_facts:
+
+- name: Show status of the nginx service
+  ansible.builtin.debug:
+    var: ansible_facts.services['nginx.service'].state
+
+- name: Check default page works and returns a status 200
+  ansible.builtin.uri:
+    url: "{{ nginx_default_page }}"
+
+...
